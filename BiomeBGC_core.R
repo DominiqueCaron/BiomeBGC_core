@@ -19,6 +19,8 @@ defineModule(sim, list(
   parameters = bindrows(
     defineParameter("argv", "character", "-a", NA, NA,
                     "Arguments for the BiomeBGC library (same as 'bgc' commandline application)"),
+    defineParameter("bgcPath", "character", tempdir(), NA, NA,
+                    "Path to base directory to use for simulations."),
     defineParameter(".plots", "character", "screen", NA, NA,
                     "Used by Plots function, which can be optionally used here"),
     defineParameter(".plotInitialTime", "numeric", start(sim), NA, NA,
@@ -71,7 +73,9 @@ defineModule(sim, list(
     )
   ),
   outputObjects = bindrows(
-    createsOutput(objectName = NA, objectClass = NA, desc = NA)
+    createsOutput(objectName = "outputControl", objectClass = "data.frame", desc = NA),
+    createsOutput(objectName = "dailyOutput", objectClass = "data.frame", desc = NA),
+    createsOutput(objectName = "annualOutput", objectClass = "data.frame", desc = NA)
   )
 ))
 
@@ -121,49 +125,78 @@ doEvent.BiomeBGC_core = function(sim, eventTime, eventType) {
 
 ### template initialization
 Init <- function(sim) {
-  #
+  ## Arguments for the BiomeBGC library
   argv <- params(sim)$BiomeBGC_core$argv
-  tmpd <- tempdir()
-  createIOdirs(tmpd)
-  iniPath <- file.path(tmpd, "inputs" ,"ini", basename(sim$bbgc.ini))
-  spinupIniPath <- file.path(tmpd, "inputs" ,"ini", basename(sim$bbgcSpinup.ini))
-  file.copy(sim$bbgcSpinup.ini, spinupIniPath)
-  file.copy(sim$bbgc.ini, iniPath)
-  file.copy(sim$bbgc.co2, file.path(tmpd, sub("^.*[/\\]inputs[/\\]", "inputs/", sim$bbgc.co2)))
-  file.copy(sim$bbgc.epc, file.path(tmpd, sub("^.*[/\\]inputs[/\\]", "inputs/", sim$bbgc.epc)))
-  file.copy(sim$bbgc.met, file.path(tmpd, sub("^.*[/\\]inputs[/\\]", "inputs/", sim$bbgc.met)))
-  download.file("https://raw.githubusercontent.com/PredictiveEcology/BiomeBGCR/refs/heads/development/inst/inputs/restart/placeholder",
-            file.path(tmpd, "inputs", "restart", "placeholder"))
   
-  res <- bgcExecuteSpinup(argv, spinupIniPath, tmpd)  
-  
-  # use the first ini file to get the number of simulation years because it is the same for all sites/scenarios
-  ini <- iniRead(sim$bbgc.ini[[1]])
-  nbYears <- strtoi(iniGet(ini, "TIME_DEFINE", 2))
+  ## Set the simulation directory
+  bgcPath <- params(sim)$BiomeBGC_core$bgcPath
+  createBGCdirs(sim)
 
-  res <- bgcExecute(argv, iniPath, tmpd, nbYears, TRUE)
+  ## Spinup
+  # make sure the inputs for the spinups are available
+
+  # execute spinups
+  spinupIniPath <- file.path(bgcPath, "inputs" ,"ini", basename(sim$bbgcSpinup.ini))
+  res <- bgcExecuteSpinup(argv, spinupIniPath, bgcPath)  
+  
+  ## Simulate
+  # make sure the inputs for the main simulations are available
+  
+  # execute the simulations
+  iniPath <- file.path(bgcPath, "inputs" ,"ini", basename(sim$bbgc.ini))
+  res <- bgcExecute(argv, iniPath, bgcPath)
+  
+  ## Output processing
   sim$outputControl <- list()
   sim$dailyOutput <- list()
   sim$annualOutput <- list()
   for (i in 1:length(res[[2]])){
-    sim$outputControl[[i]] <- digestOutputControl(res[[2]][[i]])
-    sim$dailyOutput[[i]] <- digestDailyOutput(res[[2]][[i]], nbYears)
-    sim$annualOutput[[i]] <- digestAnnualOutput(res[[2]][[i]])
+    sim$outputControl[[i]] <- readOutputControl(res[[2]][[i]])
+    nbYears <- nrow(sim$outputControl[[i]])
+    sim$dailyOutput[[i]] <- readDailyOutput(res[[2]][[i]], nbYears)
+    sim$annualOutput[[i]] <- readAnnualOutput(res[[2]][[i]])
   }
   return(invisible(sim))
 }
 
-createIOdirs <- function(path) {
-  sampleInputsDir <- system.file("inputs", package = "BiomeBGCR")
-  sampleInputFiles <- list.files(sampleInputsDir, recursive = TRUE)
+createBGCdirs <- function(sim) {
+  bgcPath <- params(sim)$BiomeBGC_core$bgcPath
+  # Get all input files
+  inputFiles <- extractInputFiles(c(sim$bbgcSpinup.ini, sim$bbgc.ini))
   
-  vapply(unique(dirname(sampleInputFiles)), function(d) {
-    dir.create(file.path(path, "inputs", d), recursive = TRUE, showWarnings = FALSE)
+  # Create the folder structure
+  vapply(unique(dirname(inputFiles)), function(d) {
+    dir.create(file.path(bgcPath, d), recursive = TRUE, showWarnings = FALSE)
   }, logical(1))
-  dir.create(file.path(path, "outputs"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(bgcPath, "outputs"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(bgcPath, "inputs", "ini"), recursive = TRUE, showWarnings = FALSE)
+  
+  ## Copy inputs to simulation directory
+  iniPath <- file.path(bgcPath, "inputs" ,"ini", basename(sim$bbgc.ini))
+  spinupIniPath <- file.path(bgcPath, "inputs" ,"ini", basename(sim$bbgcSpinup.ini))
+  file.copy(sim$bbgcSpinup.ini, spinupIniPath)
+  file.copy(sim$bbgc.ini, iniPath)
+  file.copy(sim$bbgc.co2, file.path(bgcPath, sub("^.*[/\\]inputs[/\\]", "inputs/", sim$bbgc.co2)))
+  file.copy(sim$bbgc.epc, file.path(bgcPath, sub("^.*[/\\]inputs[/\\]", "inputs/", sim$bbgc.epc)))
+  file.copy(sim$bbgc.met, file.path(bgcPath, sub("^.*[/\\]inputs[/\\]", "inputs/", sim$bbgc.met)))
 }
 
-digestOutputControl <- function(res){
+extractInputFiles <- function(iniPaths){
+  inputFilePaths <- c()
+  for (i in iniPaths){
+    ini <- iniRead(i)
+    metInputPath <- iniGet(ini, "MET_INPUT", 1)
+    restartInputPath <- ifelse(iniGet(ini, "RESTART", 1) == "0", NA, iniGet(ini, "RESTART", 5))
+    co2Inputs <- iniGet(ini, "CO2_CONTROL", 3)
+    epcInputs <- iniGet(ini, "EPC_FILE", 1)
+    inputFilePaths <- c(inputFilePaths,
+                        c(metInputPath, restartInputPath, co2Inputs, epcInputs)) |>
+      unique() |> na.omit()
+  }
+  return(inputFilePaths)
+}
+
+readOutputControl <- function(res){
   # 
   outputControlFile <- paste0(res$OUTPUT_CONTROL$value[2], "_ann.txt")
   colNames <- c("year", "annPRCP", "annTavg", "maxLAI", "annET", "annOF", "annNPP", "annNBP")
@@ -177,7 +210,7 @@ digestOutputControl <- function(res){
   
 }
 
-digestDailyOutput <- function(res, nbYears){
+readDailyOutput <- function(res, nbYears){
   #
   colNames <- res$DAILY_OUTPUT$comment[-c(1,2)]
   dailyOutputFile <- paste0(res$OUTPUT_CONTROL$value[2], ".dayout.ascii")
@@ -190,7 +223,7 @@ digestDailyOutput <- function(res, nbYears){
   return(dailyOutput)
 }
 
-digestAnnualOutput <- function(res){
+readAnnualOutput <- function(res){
   # 
   colNames <- res$ANNUAL_OUTPUT$comment[-c(1,2)]
   colNames <- gsub(" ", "_", colNames)
@@ -204,20 +237,7 @@ digestAnnualOutput <- function(res){
 }
 
 .inputObjects <- function(sim) {
-  # Any code written here will be run during the simInit for the purpose of creating
-  # any objects required by this module and identified in the inputObjects element of defineModule.
-  # This is useful if there is something required before simulation to produce the module
-  # object dependencies, including such things as downloading default datasets, e.g.,
-  # downloadData("LCC2005", modulePath(sim)).
-  # Nothing should be created here that does not create a named object in inputObjects.
-  # Any other initiation procedures should be put in "init" eventType of the doEvent function.
-  # Note: the module developer can check if an object is 'suppliedElsewhere' to
-  # selectively skip unnecessary steps because the user has provided those inputObjects in the
-  # simInit call, or another module will supply or has supplied it. e.g.,
-  # if (!suppliedElsewhere('defaultColor', sim)) {
-  #   sim$map <- Cache(prepInputs, extractURL('map')) # download, extract, load file from url in sourceURL
-  # }
-
+  
   #cacheTags <- c(currentModule(sim), "function:.inputObjects") ## uncomment this if Cache is being used
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
