@@ -19,8 +19,10 @@ defineModule(sim, list(
   parameters = bindrows(
     defineParameter("argv", "character", "-a", NA, NA,
                     "Arguments for the BiomeBGC library (same as 'bgc' commandline application)"),
-    defineParameter("bgcPath", "character", tempdir(), NA, NA,
+    defineParameter("bbgcPath", "character", tempdir(), NA, NA,
                     "Path to base directory to use for simulations."),
+    defineParameter("bbgcInputPath", "character", inputPath(sim), NA, NA,
+                    "Path to the Biome-BGC input directory."),
     defineParameter(".plots", "character", "screen", NA, NA,
                     "Used by Plots function, which can be optionally used here"),
     defineParameter(".plotInitialTime", "numeric", start(sim), NA, NA,
@@ -42,34 +44,16 @@ defineModule(sim, list(
   ),
   inputObjects = bindrows(
     expectsInput(
-      objectName = "bbgc.co2",
-      objectClass = "character",
-      desc = paste("Biome-BGC carbon-dioxide concentration files.", 
-                   "Path to the .txt files.")
-    ),
-    expectsInput(
       objectName = "bbgcSpinup.ini",
       objectClass = "character",
       desc = paste("Biome-BGC initialization files for the spinup.", 
                    "Path to the .ini files (one path per site/scenario).")
     ),
     expectsInput(
-      objectName = "bbgc.epc",
-      objectClass = "character",
-      desc = paste("Biome-BGC ecophysiological constants files.", 
-                   "Path to the .epc files.")
-    ),
-    expectsInput(
       objectName = "bbgc.ini",
       objectClass = "character",
       desc = paste("Biome-BGC initialization files.", 
                    "Path to the .ini files (one path per site/scenario).")
-    ),
-    expectsInput(
-      objectName = "bbgc.met",
-      objectClass = "character",
-      desc = paste("Biome-BGC meterological data files.", 
-                   "Path to the .met files (one path per site/scenario).")
     )
   ),
   outputObjects = bindrows(
@@ -129,22 +113,24 @@ Init <- function(sim) {
   argv <- params(sim)$BiomeBGC_core$argv
   
   ## Set the simulation directory
-  bgcPath <- params(sim)$BiomeBGC_core$bgcPath
+  bbgcPath <- params(sim)$BiomeBGC_core$bbgcPath
   createBGCdirs(sim)
-
-  ## Spinup
-  # make sure the inputs for the spinups are available
-
-  # execute spinups
-  spinupIniPath <- file.path(bgcPath, "inputs" ,"ini", basename(sim$bbgcSpinup.ini))
-  res <- bgcExecuteSpinup(argv, spinupIniPath, bgcPath)  
   
+  ## Spinup
+  if(!is.null(sim$bbgcSpinup.ini)){
+    # make sure the inputs for the spinups are available
+    
+    # execute spinups
+    spinupIniPath <- file.path(bbgcPath, "inputs" ,"ini", basename(sim$bbgcSpinup.ini))
+    res <- bgcExecuteSpinup(argv, spinupIniPath, bbgcPath)  
+  }
+
   ## Simulate
   # make sure the inputs for the main simulations are available
   
   # execute the simulations
-  iniPath <- file.path(bgcPath, "inputs" ,"ini", basename(sim$bbgc.ini))
-  res <- bgcExecute(argv, iniPath, bgcPath)
+  iniPath <- file.path(bbgcPath, "inputs" ,"ini", basename(sim$bbgc.ini))
+  res <- bgcExecute(argv, iniPath, bbgcPath)
   
   ## Output processing
   sim$outputControl <- list()
@@ -152,33 +138,40 @@ Init <- function(sim) {
   sim$annualOutput <- list()
   for (i in 1:length(res[[2]])){
     sim$outputControl[[i]] <- readOutputControl(res[[2]][[i]])
-    nbYears <- nrow(sim$outputControl[[i]])
-    sim$dailyOutput[[i]] <- readDailyOutput(res[[2]][[i]], nbYears)
+    sim$dailyOutput[[i]] <- readDailyOutput(res[[2]][[i]])
     sim$annualOutput[[i]] <- readAnnualOutput(res[[2]][[i]])
   }
   return(invisible(sim))
 }
 
 createBGCdirs <- function(sim) {
-  bgcPath <- params(sim)$BiomeBGC_core$bgcPath
+  bbgcPath <- params(sim)$BiomeBGC_core$bbgcPath
   # Get all input files
   inputFiles <- extractInputFiles(c(sim$bbgcSpinup.ini, sim$bbgc.ini))
   
   # Create the folder structure
   vapply(unique(dirname(inputFiles)), function(d) {
-    dir.create(file.path(bgcPath, d), recursive = TRUE, showWarnings = FALSE)
+    dir.create(file.path(bbgcPath, "inputs", d), recursive = TRUE, showWarnings = FALSE)
+
   }, logical(1))
-  dir.create(file.path(bgcPath, "outputs"), recursive = TRUE, showWarnings = FALSE)
-  dir.create(file.path(bgcPath, "inputs", "ini"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(bbgcPath, "outputs"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(bbgcPath, "inputs", "ini"), recursive = TRUE, showWarnings = FALSE)
   
-  ## Copy inputs to simulation directory
-  iniPath <- file.path(bgcPath, "inputs" ,"ini", basename(sim$bbgc.ini))
-  spinupIniPath <- file.path(bgcPath, "inputs" ,"ini", basename(sim$bbgcSpinup.ini))
-  file.copy(sim$bbgcSpinup.ini, spinupIniPath)
+  # Copy input files to simulation directory
+  vapply(unique(inputFiles), function(d) {
+    file.copy(from = file.path(params(sim)$BiomeBGC_core$bbgcInputPath, d),
+              to = file.path(bbgcPath, "inputs", d))
+  }, logical(1))
+  
+  # Copy ini file into input directory
+  iniPath <- file.path(bbgcPath, "inputs" ,"ini", basename(sim$bbgc.ini))
   file.copy(sim$bbgc.ini, iniPath)
-  file.copy(sim$bbgc.co2, file.path(bgcPath, sub("^.*[/\\]inputs[/\\]", "inputs/", sim$bbgc.co2)))
-  file.copy(sim$bbgc.epc, file.path(bgcPath, sub("^.*[/\\]inputs[/\\]", "inputs/", sim$bbgc.epc)))
-  file.copy(sim$bbgc.met, file.path(bgcPath, sub("^.*[/\\]inputs[/\\]", "inputs/", sim$bbgc.met)))
+  
+  # If there is a spinup, copy spinup ini file into input directory
+  if(!is.null(sim$bbgcSpinup.ini)){
+    spinupIniPath <- file.path(bbgcPath, "inputs" ,"ini", basename(sim$bbgcSpinup.ini))
+    file.copy(sim$bbgcSpinup.ini, spinupIniPath)
+  }
 }
 
 extractInputFiles <- function(iniPaths){
@@ -187,22 +180,25 @@ extractInputFiles <- function(iniPaths){
     ini <- iniRead(i)
     metInputPath <- iniGet(ini, "MET_INPUT", 1)
     restartInputPath <- ifelse(iniGet(ini, "RESTART", 1) == "0", NA, iniGet(ini, "RESTART", 5))
-    co2Inputs <- iniGet(ini, "CO2_CONTROL", 3)
+    co2Inputs <- ifelse(iniGet(ini, "CO2_CONTROL", 0) == "0", NA, iniGet(ini, "CO2_CONTROL", 3))
     epcInputs <- iniGet(ini, "EPC_FILE", 1)
     inputFilePaths <- c(inputFilePaths,
                         c(metInputPath, restartInputPath, co2Inputs, epcInputs)) |>
       unique() |> na.omit()
   }
+  inputFilePaths <- gsub("inputs/", "",inputFilePaths)
   return(inputFilePaths)
 }
 
 readOutputControl <- function(res){
-  # 
-  outputControlFile <- paste0(res$OUTPUT_CONTROL$value[2], "_ann.txt")
+  # Get the path to the annual abiotic variable output
+  outputControlFile <- paste0(iniGet(res, "OUTPUT_CONTROL", 1), "_ann.txt")
+  # Set the column names - DC 2025-11-08: Is that fixed?
   colNames <- c("year", "annPRCP", "annTavg", "maxLAI", "annET", "annOF", "annNPP", "annNBP")
+  # Read the file
   outputControl <- read.table(
     outputControlFile,
-    skip = 10,
+    skip = 10, # DC 2025-11-08: Is that always true?
     header = FALSE,
     col.names = colNames
   )
@@ -210,13 +206,18 @@ readOutputControl <- function(res){
   
 }
 
-readDailyOutput <- function(res, nbYears){
-  #
+readDailyOutput <- function(res){
+  # Get columns names
   colNames <- res$DAILY_OUTPUT$comment[-c(1,2)]
-  dailyOutputFile <- paste0(res$OUTPUT_CONTROL$value[2], ".dayout.ascii")
+  # Get daily output file location
+  dailyOutputFile <- paste0(iniGet(res, "OUTPUT_CONTROL", 1), ".dayout.ascii")
+  # Read daily output file
   dailyOutput <- read.table(dailyOutputFile, header = FALSE, col.names = colNames)
+  # Add year and julian date
+  firstyear <- as.integer(iniGet(res, "TIME_DEFINE", 3))
+  nbYears <- as.integer(iniGet(res, "TIME_DEFINE", 2))
   dailyOutput <- data.frame(
-    year = rep(1:nbYears, each = 365),
+    year = rep(firstyear:(firstyear+nbYears-1), each = 365),
     day = rep(1:365),
     dailyOutput
   )
@@ -224,13 +225,18 @@ readDailyOutput <- function(res, nbYears){
 }
 
 readAnnualOutput <- function(res){
-  # 
+  # Get column names
   colNames <- res$ANNUAL_OUTPUT$comment[-c(1,2)]
   colNames <- gsub(" ", "_", colNames)
-  annualOutputFile <- paste0(res$OUTPUT_CONTROL$value[2], ".annout.ascii")
+  # Get annual output file location
+  annualOutputFile <- paste0(iniGet(res, "OUTPUT_CONTROL", 1), ".annout.ascii")
+  # Read annual output file
   annualOutput <- read.table(annualOutputFile, header = FALSE, col.names = colNames)
+  # Add year
+  firstyear <- as.integer(iniGet(res, "TIME_DEFINE", 3))
+  nbYears <- as.integer(iniGet(res, "TIME_DEFINE", 2))
   annualOutput <- data.frame(
-    year = 1:nrow(annualOutput),
+    year = firstyear:(firstyear+nbYears-1),
     annualOutput
   )
   return(annualOutput)
