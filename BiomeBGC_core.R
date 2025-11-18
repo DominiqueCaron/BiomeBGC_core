@@ -57,9 +57,9 @@ defineModule(sim, list(
     )
   ),
   outputObjects = bindrows(
-    createsOutput(objectName = "outputControl", objectClass = "data.frame", desc = NA),
-    createsOutput(objectName = "dailyOutput", objectClass = "data.frame", desc = NA),
-    createsOutput(objectName = "annualOutput", objectClass = "data.frame", desc = NA)
+    createsOutput(objectName = "annualOutput", objectClass = "list", desc = NA),
+    createsOutput(objectName = "dailyOutput", objectClass = "list", desc = NA),
+    createsOutput(objectName = "monthlyAverages", objectClass = "list", desc = NA)
   )
 ))
 
@@ -133,12 +133,14 @@ Init <- function(sim) {
   res <- bgcExecute(argv, iniPath, bbgcPath)
   
   ## Output processing
-  sim$outputControl <- list()
   sim$dailyOutput <- list()
+  sim$monthlyAverages <- list()
+  #sim$annualAverages <- list()
   sim$annualOutput <- list()
   for (i in 1:length(res[[2]])){
-    sim$outputControl[[i]] <- readOutputControl(res[[2]][[i]])
     sim$dailyOutput[[i]] <- readDailyOutput(res[[2]][[i]])
+    sim$monthlyAverages[[i]] <- readMonthlyAverages(res[[2]][[i]])
+    #sim$annualAverages[[i]] <- readAnnualAverages(res[[2]][[i]])
     sim$annualOutput[[i]] <- readAnnualOutput(res[[2]][[i]])
   }
   return(invisible(sim))
@@ -222,6 +224,41 @@ readDailyOutput <- function(res){
     dailyOutput
   )
   return(dailyOutput)
+}
+
+readMonthlyAverages <- function(res){
+  # Get columns names
+  colNames <- res$DAILY_OUTPUT$comment[-c(1,2)]
+  # Get monthly averages output file location
+  monAvgFile <- paste0(iniGet(res, "OUTPUT_CONTROL", 1), ".monavgout.ascii")
+  # Read monthly averages output file
+  monAvg <- read.table(monAvgFile, header = FALSE, col.names = colNames)
+  # Add month and year
+  firstyear <- as.integer(iniGet(res, "TIME_DEFINE", 3))
+  nbYears <- as.integer(iniGet(res, "TIME_DEFINE", 2))
+  monAvg <- data.frame(
+    year = rep(firstyear:(firstyear+nbYears-1), each = 12),
+    month = rep(1:12),
+    monAvg
+  )
+  return(monAvg)
+}
+
+readAnnualAverages <- function(res){
+  # Get columns names
+  colNames <- res$DAILY_OUTPUT$comment[-c(1,2)]
+  # Get annual averages output file location
+  annualAvgFile <- paste0(iniGet(res, "OUTPUT_CONTROL", 1), ".annavgout.ascii")
+  # Read annual averages output file
+  annualAvg <- read.table(annualAvgFile, header = FALSE, col.names = colNames)
+  # Add year
+  firstyear <- as.integer(iniGet(res, "TIME_DEFINE", 3))
+  nbYears <- as.integer(iniGet(res, "TIME_DEFINE", 2))
+  annualAvg <- data.frame(
+    year = firstyear:(firstyear+nbYears-1),
+    annualAvg
+  )
+  return(annualAvg)
 }
 
 readAnnualOutput <- function(res){
