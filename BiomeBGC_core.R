@@ -119,21 +119,20 @@ Init <- function(sim) {
   ## Set the simulation directory
   bbgcPath <- params(sim)$BiomeBGC_core$bbgcPath
   createBGCdirs(sim)
-  
   ## Spinup
   if(!is.null(sim$bbgcSpinup.ini)){
     # make sure the inputs for the spinups are available
     
     # execute spinups
-    spinupIniPath <- file.path(bbgcPath, "inputs" ,"ini", basename(sim$bbgcSpinup.ini))
+    spinupIniPath <- file.path(bbgcPath, "inputs" ,"ini", paste0(P(sim)$.studyAreaName, "_spinup.ini"))
     res <- bgcExecuteSpinup(argv, spinupIniPath, bbgcPath)  
   }
-
+  
   ## Simulate
   # make sure the inputs for the main simulations are available
   
   # execute the simulations
-  iniPath <- file.path(bbgcPath, "inputs" ,"ini", basename(sim$bbgc.ini))
+  iniPath <- file.path(bbgcPath, "inputs" ,"ini", paste0(P(sim)$.studyAreaName, ".ini"))
   res <- bgcExecute(argv, iniPath, bbgcPath)
   
   ## Output processing
@@ -153,12 +152,12 @@ Init <- function(sim) {
 createBGCdirs <- function(sim) {
   bbgcPath <- params(sim)$BiomeBGC_core$bbgcPath
   # Get all input files
-  inputFiles <- extractInputFiles(c(sim$bbgcSpinup.ini, sim$bbgc.ini))
+  inputFiles <- extractInputFiles(list(sim$bbgcSpinup.ini, sim$bbgc.ini))
   
   # Create the folder structure
   vapply(unique(dirname(inputFiles)), function(d) {
     dir.create(file.path(bbgcPath, "inputs", d), recursive = TRUE, showWarnings = FALSE)
-
+    
   }, logical(1))
   dir.create(file.path(bbgcPath, "outputs"), recursive = TRUE, showWarnings = FALSE)
   dir.create(file.path(bbgcPath, "inputs", "ini"), recursive = TRUE, showWarnings = FALSE)
@@ -170,23 +169,23 @@ createBGCdirs <- function(sim) {
   }, logical(1))
   
   # Copy ini file into input directory
-  iniPath <- file.path(bbgcPath, "inputs" ,"ini", basename(sim$bbgc.ini))
-  file.copy(sim$bbgc.ini, iniPath)
+  iniWrite(sim$bbgc.ini, fileName = file.path(bbgcPath, "inputs" ,"ini", paste0(P(sim)$.studyAreaName, ".ini")))
+  
   
   # If there is a spinup, copy spinup ini file into input directory
   if(!is.null(sim$bbgcSpinup.ini)){
-    spinupIniPath <- file.path(bbgcPath, "inputs" ,"ini", basename(sim$bbgcSpinup.ini))
-    file.copy(sim$bbgcSpinup.ini, spinupIniPath)
+    iniWrite(sim$bbgcSpinup.ini, fileName = file.path(bbgcPath, "inputs" ,"ini", paste0(P(sim)$.studyAreaName, "_spinup.ini")))
   }
 }
 
-extractInputFiles <- function(iniPaths){
+extractInputFiles <- function(inis){
   inputFilePaths <- c()
-  for (i in iniPaths){
-    ini <- iniRead(i)
+  for (ini in inis){
     metInputPath <- iniGet(ini, "MET_INPUT", 1)
     restartInputPath <- ifelse(iniGet(ini, "RESTART", 1) == "0", NA, iniGet(ini, "RESTART", 5))
-    co2Inputs <- ifelse(iniGet(ini, "CO2_CONTROL", 0) == "0", NA, iniGet(ini, "CO2_CONTROL", 3))
+    co2Inputs <- ifelse(iniGet(ini, "CO2_CONTROL", 1) == "0",
+                        NA,
+                        iniGet(ini, "CO2_CONTROL", 3))
     epcInputs <- iniGet(ini, "EPC_FILE", 1)
     inputFilePaths <- c(inputFilePaths,
                         c(metInputPath, restartInputPath, co2Inputs, epcInputs)) |>
