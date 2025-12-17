@@ -164,7 +164,7 @@ createBGCdirs <- function(sim) {
   # Copy input files to simulation directory
   vapply(unique(inputFiles), function(d) {
     file.copy(from = file.path(params(sim)$BiomeBGC_core$bbgcInputPath, d),
-              to = file.path(bbgcPath, "inputs", d))
+              to = file.path(bbgcPath, "inputs", d), overwrite = TRUE)
   }, logical(1))
   
   # Copy ini file into input directory
