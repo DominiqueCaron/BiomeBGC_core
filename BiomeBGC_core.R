@@ -118,21 +118,22 @@ Init <- function(sim) {
   ## Set the simulation directory
   bbgcPath <- params(sim)$BiomeBGC_core$bbgcPath
   createBGCdirs(sim)
-  ## Spinup
-  if(!is.null(sim$bbgcSpinup.ini)){
-    # make sure the inputs for the spinups are available
-    
-    # execute spinups
-    spinupIniPath <- file.path(bbgcPath, "inputs" ,"ini", paste0(P(sim)$.studyAreaName, "_spinup.ini"))
-    res <- bgcExecuteSpinup(argv, spinupIniPath, bbgcPath)  
-  }
+  # execute spinups
+  spinupIniPaths <- file.path(
+    bbgcPath,
+    "inputs" ,
+    "ini",
+    paste0(sim$pixelGroupParameters$pixelGroup, "_spinup.ini")
+  )
+  res <- bgcExecuteSpinup(argv, spinupIniPaths, bbgcPath)
   
   ## Simulate
-  # make sure the inputs for the main simulations are available
-  
   # execute the simulations
-  iniPath <- file.path(bbgcPath, "inputs" ,"ini", paste0(P(sim)$.studyAreaName, ".ini"))
-  res <- bgcExecute(argv, iniPath, bbgcPath)
+  iniPaths <- file.path(bbgcPath,
+                        "inputs" ,
+                        "ini",
+                        paste0(sim$pixelGroupParameters$pixelGroup, ".ini"))
+  res <- bgcExecute(argv, iniPaths, bbgcPath)
   
   ## Output processing
   sim$dailyOutput <- list()
@@ -151,7 +152,7 @@ Init <- function(sim) {
 createBGCdirs <- function(sim) {
   bbgcPath <- params(sim)$BiomeBGC_core$bbgcPath
   # Get all input files
-  inputFiles <- extractInputFiles(list(sim$bbgcSpinup.ini, sim$bbgc.ini))
+  inputFiles <- extractInputFiles(c(sim$bbgcSpinup.ini, sim$bbgc.ini))
   
   # Create the folder structure
   vapply(unique(dirname(inputFiles)), function(d) {
@@ -167,14 +168,18 @@ createBGCdirs <- function(sim) {
               to = file.path(bbgcPath, "inputs", d), overwrite = TRUE)
   }, logical(1))
   
-  # Copy ini file into input directory
-  iniWrite(sim$bbgc.ini, fileName = file.path(bbgcPath, "inputs" ,"ini", paste0(P(sim)$.studyAreaName, ".ini")))
-  
-  
-  # If there is a spinup, copy spinup ini file into input directory
-  if(!is.null(sim$bbgcSpinup.ini)){
-    iniWrite(sim$bbgcSpinup.ini, fileName = file.path(bbgcPath, "inputs" ,"ini", paste0(P(sim)$.studyAreaName, "_spinup.ini")))
-  }
+  # Copy ini files into input directory
+  lapply(sim$pixelGroupParameters$pixelGroup, function(pixelGroup_i){
+    # Copy ini file into input directory
+    ini <- sim$bbgc.ini[[pixelGroup_i]]
+    fileName <- file.path(bbgcPath, "inputs" ,"ini", paste0(pixelGroup_i, ".ini"))
+    iniWrite(ini, fileName = fileName)
+    # Copy spinup ini file into input directory
+    ini <- sim$bbgcSpinup.ini[[pixelGroup_i]]
+    fileName <- file.path(bbgcPath, "inputs" ,"ini", paste0(pixelGroup_i, "_spinup.ini"))
+    iniWrite(ini, fileName = fileName)
+  })
+  return(invisible(sim))
 }
 
 extractInputFiles <- function(inis){
