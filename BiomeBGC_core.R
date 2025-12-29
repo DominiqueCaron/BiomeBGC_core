@@ -136,16 +136,10 @@ Init <- function(sim) {
   res <- bgcExecute(argv, iniPaths, bbgcPath)
   
   ## Output processing
-  sim$dailyOutput <- list()
-  sim$monthlyAverages <- list()
-  #sim$annualAverages <- list()
-  sim$annualOutput <- list()
-  for (i in 1:length(res[[2]])){
-    sim$dailyOutput[[i]] <- readDailyOutput(res[[2]][[i]])
-    sim$monthlyAverages[[i]] <- readMonthlyAverages(res[[2]][[i]])
-    #sim$annualAverages[[i]] <- readAnnualAverages(res[[2]][[i]])
-    sim$annualOutput[[i]] <- readAnnualOutput(res[[2]][[i]])
-  }
+  sim$dailyOutput <- lapply(res[[2]], readDailyOutput) |> rbindlist(idcol = "pixelGroup")
+  sim$monthlyAverages <- lapply(res[[2]], readMonthlyAverages) |> rbindlist(idcol = "pixelGroup")
+  sim$annualOutput <- lapply(res[[2]], readAnnualOutput) |> rbindlist(idcol = "pixelGroup")
+  
   return(invisible(sim))
 }
 
@@ -212,6 +206,7 @@ readDailyOutput <- function(res){
   dailyOutput <- data.frame(
     year = rep(firstyear:(firstyear+nbYears-1), each = 365),
     day = rep(1:365),
+    timestep = c(1:nrow(dailyOutput)),
     dailyOutput
   )
   return(dailyOutput)
