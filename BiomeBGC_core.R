@@ -125,7 +125,15 @@ Init <- function(sim) {
     "ini",
     paste0(sim$pixelGroupParameters$pixelGroup, "_spinup.ini")
   )
-  res <- bgcExecuteSpinup(argv, spinupIniPaths, bbgcPath)
+  res <- lapply(spinupIniPaths, function(iniPath) {
+    message("Running the spinup for pixelGroup ", which(iniPath == spinupIniPaths), " of ", length(spinupIniPaths))
+    # Run spinup and silence the messaging
+    log <- capture.output({
+      resi <- bgcExecuteSpinup(argv, iniPath, bbgcPath)
+    })
+    if (resi[[1]] != 0) stop("Spinup error.")
+    return(resi[[2]])
+  })
   
   ## Simulate
   # execute the simulations
@@ -133,12 +141,20 @@ Init <- function(sim) {
                         "inputs" ,
                         "ini",
                         paste0(sim$pixelGroupParameters$pixelGroup, ".ini"))
-  res <- bgcExecute(argv, iniPaths, bbgcPath)
+  res <- lapply(iniPaths, function(iniPath) {
+    message("Running simulation for pixelGroup ", which(iniPath == iniPaths), " of ", length(iniPaths))
+    # Run simulation and silence the messaging
+    log <- capture.output({
+      resi <- bgcExecute(argv, iniPath, bbgcPath)
+    })
+    if (resi[[1]] != 0) stop("Simulation error.")
+    return(resi[[2]])
+  })
   
   ## Output processing
-  sim$dailyOutput <- lapply(res[[2]], readDailyOutput) |> rbindlist(idcol = "pixelGroup")
-  sim$monthlyAverages <- lapply(res[[2]], readMonthlyAverages) |> rbindlist(idcol = "pixelGroup")
-  sim$annualOutput <- lapply(res[[2]], readAnnualOutput) |> rbindlist(idcol = "pixelGroup")
+  sim$dailyOutput <- lapply(res, readDailyOutput) |> rbindlist(idcol = "pixelGroup")
+  sim$monthlyAverages <- lapply(res, readMonthlyAverages) |> rbindlist(idcol = "pixelGroup")
+  sim$annualOutput <- lapply(res, readAnnualOutput) |> rbindlist(idcol = "pixelGroup")
   
   return(invisible(sim))
 }
@@ -165,11 +181,11 @@ createBGCdirs <- function(sim) {
   # Copy ini files into input directory
   lapply(sim$pixelGroupParameters$pixelGroup, function(pixelGroup_i){
     # Copy ini file into input directory
-    ini <- sim$bbgc.ini[[pixelGroup_i]]
+    ini <- sim$bbgc.ini[[as.character(pixelGroup_i)]]
     fileName <- file.path(bbgcPath, "inputs" ,"ini", paste0(pixelGroup_i, ".ini"))
     iniWrite(ini, fileName = fileName)
     # Copy spinup ini file into input directory
-    ini <- sim$bbgcSpinup.ini[[pixelGroup_i]]
+    ini <- sim$bbgcSpinup.ini[[as.character(pixelGroup_i)]]
     fileName <- file.path(bbgcPath, "inputs" ,"ini", paste0(pixelGroup_i, "_spinup.ini"))
     iniWrite(ini, fileName = fileName)
   })
