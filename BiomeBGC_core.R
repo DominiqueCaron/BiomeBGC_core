@@ -132,7 +132,7 @@ Init <- function(sim) {
       resi <- bgcExecuteSpinup(argv, iniPath, bbgcPath)
     })
     if (resi[[1]] != 0) stop("Spinup error.")
-    return(resi[[2]])
+    return(resi[[2]][[1]])
   })
   
   ## Simulate
@@ -148,9 +148,8 @@ Init <- function(sim) {
       resi <- bgcExecute(argv, iniPath, bbgcPath)
     })
     if (resi[[1]] != 0) stop("Simulation error.")
-    return(resi[[2]])
+    return(resi[[2]][[1]])
   })
-  
   ## Output processing
   sim$dailyOutput <- lapply(res, readDailyOutput) |> rbindlist(idcol = "pixelGroup")
   sim$monthlyAverages <- lapply(res, readMonthlyAverages) |> rbindlist(idcol = "pixelGroup")
