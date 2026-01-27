@@ -153,7 +153,7 @@ doEvent.BiomeBGC_core = function(sim, eventTime, eventType) {
 ### template initialization
 Init <- function(sim) {
   ## Arguments for the BiomeBGC library
-  argv <- params(sim)$BiomeBGC_core$argv
+  argv <- "-v1"
   
   ## Set the simulation directory
   bbgcPath <- params(sim)$BiomeBGC_core$bbgcPath
@@ -182,29 +182,29 @@ Init <- function(sim) {
     # Set up the cluster
     cl <- parallelly::makeClusterPSOCK(
       n_cores,
-      default_packages = c("BiomeBGCR", "utils"),
       rscript_libs = .libPaths(),
       autoStop = TRUE
     )
+    parallel::clusterEvalQ(cl, library(BiomeBGCR))
     on.exit(parallel::stopCluster(cl), add = TRUE)
-    parallel::clusterExport(cl, c("argv", "bbgcPath", "readDailyOutput", "readMonthlyAverages"), envir = environment())
+    parallel::clusterExport(cl, c("argv", "bbgcPath", "readDailyOutput"), envir = environment())
     
     # Execute the spinup in parallel
     message("Running the spinup for ", n_pixelGroups, " pixelGroups in parallel using ", n_cores, " cores.")
     parLapply(cl, spinupIniPaths, function(iniPath) {
-      resi <- bgcExecuteSpinup(argv, iniPath, bbgcPath)
+      resi <- bgcExecuteSpinup(argv, iniPath, normalizePath(bbgcPath))
       if (resi[[1]] != 0)
         stop("Spinup error.")
     })
-    
     # Run the main simulation in parallel
     message("Running the main simulations in parallel using ", n_cores, " cores.")
-    res <- parLapply(cl, iniPaths, function(iniPath) {
+    sim$dailyOutput <- parLapply(cl, iniPaths, function(iniPath) {
       log <- capture.output({
-        resi <- bgcExecute(argv, iniPath, bbgcPath)
+        resi <- bgcExecute(argv, iniPath, normalizePath(bbgcPath))
       })
       if (resi[[1]] != 0) stop("Simulation error.")
-      return(resi[[2]][[1]])
+      dailyOutput <- readDailyOutput(resi[[2]][[1]])
+      return(dailyOutput)
     })
     
     # Read the outputs
@@ -215,14 +215,15 @@ Init <- function(sim) {
   } else {
     
     # Run the spinup
-    lapply(spinupIniPaths, function(iniPath) {
+    res <- lapply(spinupIniPaths, function(iniPath) {
       message("Running the spinup for pixelGroup ", which(iniPath == spinupIniPaths), " of ", length(spinupIniPaths))
-      # Silence the messaging
-      log <- capture.output({
-        resi <- bgcExecuteSpinup(argv, iniPath, bbgcPath)
-      })
+      
+      resi <- bgcExecuteSpinup(argv, iniPath, bbgcPath)
+      
       if (resi[[1]] != 0) stop("Spinup error.")
-    })
+      
+      return(resi[[2]][[1]])
+    }) |> Cache()
     
     # Run the main simulation
     res <- lapply(iniPaths, function(iniPath) {
@@ -244,12 +245,12 @@ Init <- function(sim) {
   
   # Get the annual outputs
   # Read the summary
-  sim$monthlyAverages <- lapply(res, readMonthlyAverages) |> rbindlist(idcol = "pixelGroup")
-  sim$monthlyAverages$pixelGroup <- as.numeric(names(sim$bbgc.ini))[sim$monthlyAverages$pixelGroup]
-  sim$annualSummary <- lapply(sim$bbgc.ini, readAnnualSummary, path = bbgcPath) |> rbindlist(idcol = "pixelGroup")
-  # Compute the annual average
-  outputCols <- setdiff(colnames(sim$monthlyAverages), c("pixelGroup", "year", "month"))
-  sim$annualAverages <- sim$dailyOutput[, lapply(.SD, mean), by = c("pixelGroup", "year"), .SDcols = outputCols]
+  # sim$monthlyAverages <- lapply(res, readMonthlyAverages) |> rbindlist(idcol = "pixelGroup")
+  # sim$monthlyAverages$pixelGroup <- as.numeric(names(sim$bbgc.ini))[sim$monthlyAverages$pixelGroup]
+  # sim$annualSummary <- lapply(sim$bbgc.ini, readAnnualSummary, path = bbgcPath) |> rbindlist(idcol = "pixelGroup")
+  # # Compute the annual average
+  # outputCols <- setdiff(colnames(sim$monthlyAverages), c("pixelGroup", "year", "month"))
+  # sim$annualAverages <- sim$dailyOutput[, lapply(.SD, mean), by = c("pixelGroup", "year"), .SDcols = outputCols]
   
   # remove the inputs/outputs folder of the temporary Biome-BGC folder
   # because it can fill up disk space.
@@ -309,20 +310,30 @@ extractInputFiles <- function(inis){
 }
 
 readDailyOutput <- function(res){
-  # Get columns names
-  colNames <- res$DAILY_OUTPUT$comment[-c(1,2)]
-  # Get daily output file location
-  dailyOutputFile <- paste0(iniGet(res, "OUTPUT_CONTROL", 1), ".dayout.ascii")
-  # Read daily output file
-  dailyOutput <- read.table(dailyOutputFile, header = FALSE, col.names = colNames)
-  # Add year and julian date
-  firstyear <- as.integer(iniGet(res, "TIME_DEFINE", 3))
+  # file
+  dailyOutputFile <- paste0(iniGet(res, "OUTPUT_CONTROL", 1), ".dayout")
+  
+  # get the number of entries in binFile
   nbYears <- as.integer(iniGet(res, "TIME_DEFINE", 2))
+  nbDays <- nbYears * 365
+  nbOutputs <- as.integer(iniGet(res, "DAILY_OUTPUT", 1))
+  entries <- nbDays * nbOutputs
+  
+  # read the bin daily output file
+  outputMatrix <- readBin(dailyOutputFile, double(), entries, size = 4)
+  outputMatrix <- matrix(outputMatrix, nrow = nbDays, ncol = nbOutputs, byrow = TRUE)
+  
+  # assign column names
+  colNames <- res$DAILY_OUTPUT$comment[-c(1,2)]
+  colnames(outputMatrix) <- colNames
+  
+  # add year and julian date
+  firstyear <- as.integer(iniGet(res, "TIME_DEFINE", 3))
   dailyOutput <- data.frame(
     year = rep(firstyear:(firstyear+nbYears-1), each = 365),
     day = rep(1:365),
-    timestep = c(1:nrow(dailyOutput)),
-    dailyOutput
+    timestep = c(1:nbDays),
+    outputMatrix
   )
   return(dailyOutput)
 }
@@ -358,6 +369,7 @@ readAnnualSummary <- function(ini, path){
   
   return(annualOutput)
 }
+
 
 purgeBGCdirs <- function(path){
   unlink(file.path(path, "outputs"), recursive=TRUE)
