@@ -116,129 +116,38 @@ doEvent.BiomeBGC_core = function(sim, eventTime, eventType) {
       # do stuff for this event
       sim <- Init(sim)
       
-      # schedule plotting
-      if (anyPlotting(P(sim)$.plots)) sim <- scheduleEvent(sim, end(sim), "BiomeBGC_core", "plot", eventPriority = 12)
-      
+      # schedule future event(s)
+      sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "BiomeBGC_core", "plot")
+      sim <- scheduleEvent(sim, P(sim)$.saveInitialTime, "BiomeBGC_core", "save")
     },
     plot = {
-      figPath <- file.path(outputPath(sim), "BiomeBGC_figures")
+      # ! ----- EDIT BELOW ----- ! #
+      # do stuff for this event
       
-      if("daily_npp" %in% names(sim$annualAverages)){
-        NPPtrend <- OutputTrendPlot(sim, "daily_npp", annualSum = TRUE, ylab = "NPP (gC/m2/yr)")
-        SpaDES.core::Plots(NPPtrend,
-                           filename = "NPPtrend",
-                           path = figPath,
-                           ggsaveArgs = list(width = 10, height = 7, units = "in", dpi = 300),
-                           types = "png")
-        
-        NPPstart <- OutputRaster(sim, start(sim), "daily_npp", annualSum = TRUE)
-        LandscapeAvg <- round(mean(values(NPPstart, na.rm = TRUE)), 2)
-        SpaDES.core::Plots(NPPstart,
-                           filename = "NPPstart",
-                           fn = terra::plot,
-                           main = paste0("Landscape average NPP for year ", start(sim), ": ", LandscapeAvg, " gC/m2/yr"),
-                           path = figPath,
-                           deviceArgs = list(width = 7, height = 7, units = "in", res = 300),
-                           types = "png")
-        
-        NPPend <- OutputRaster(sim, end(sim), "daily_npp", annualSum = TRUE)
-        LandscapeAvg <- round(mean(values(NPPend, na.rm = TRUE)), 2)
-        SpaDES.core::Plots(NPPend,
-                           filename = "NPPend",
-                           main = paste0("Landscape average NPP for year ", end(sim), ": ", LandscapeAvg, " gC/m2/yr"),
-                           path = figPath,
-                           deviceArgs = list(width = 7, height = 7, units = "in", res = 300),
-                           types = "png")
-      }
+      # schedule future event(s)
       
-      if("daily_nep" %in% names(sim$annualAverages)){
-        NEPtrend <- OutputTrendPlot(sim, "daily_nep", annualSum = TRUE, ylab = "NEP (gC/m2/yr)")
-        SpaDES.core::Plots(NEPtrend,
-                           filename = "NEPtrend",
-                           path = figPath,
-                           ggsaveArgs = list(width = 10, height = 7, units = "in", dpi = 300),
-                           types = "png")
-        
-        NEPstart <- OutputRaster(sim, start(sim), "daily_nep", annualSum = TRUE)
-        LandscapeAvg <- round(mean(values(NEPstart, na.rm = TRUE)), 2)
-        SpaDES.core::Plots(NEPstart,
-                           filename = "NEPstart",
-                           fn = terra::plot,
-                           main = paste0("Landscape average NEP for year ", start(sim), ": ", LandscapeAvg, " gC/m2/yr"),
-                           path = figPath,
-                           deviceArgs = list(width = 7, height = 7, units = "in", res = 300),
-                           types = "png")
-        
-        NEPend <- OutputRaster(sim, end(sim), "daily_nep", annualSum = TRUE)
-        LandscapeAvg <- round(mean(values(NEPend, na.rm = TRUE)), 2)
-        SpaDES.core::Plots(NEPend,
-                           filename = "NEPend",
-                           main = paste0("Landscape average NEP for year ", end(sim), ": ", LandscapeAvg, " gC/m2/yr"),
-                           path = figPath,
-                           deviceArgs = list(width = 7, height = 7, units = "in", res = 300),
-                           types = "png")
-        
-      }
+      # e.g.,
+      #sim <- scheduleEvent(sim, time(sim) + P(sim)$.plotInterval, "BiomeBGC_core", "plot")
       
+      # ! ----- STOP EDITING ----- ! #
+    },
+    save = {
+      # ! ----- EDIT BELOW ----- ! #
+      # do stuff for this event
+      
+      # e.g., call your custom functions/methods here
+      # you can define your own methods below this `doEvent` function
+      
+      # schedule future event(s)
+      
+      # e.g.,
+      # sim <- scheduleEvent(sim, time(sim) + P(sim)$.saveInterval, "BiomeBGC_core", "save")
+      
+      # ! ----- STOP EDITING ----- ! #
     },
     warning(noEventWarning(sim))
   )
   return(invisible(sim))
-}
-
-OutputRaster <- function(sim, yearToPlot, outputVar, annualSum){
-  
-  # filter the datatable to keep just the relevant year and variable
-  dt <- sim$annualAverages[year == yearToPlot, .SD, .SDcols = c("pixelGroup", outputVar)]
-  
-  # expand the datable by converting the pixelGroup to pixels
-  r <- sim$pixelGroupMap
-  
-  r <- classify(r,
-                rcl = data.frame(is = dt$pixelGroup, becomes = dt[,get(outputVar)]))
-  
-  # if primary productivity transform units to gC/m2/yr
-  if (outputVar %in% c("daily_npp", "daily_nep", "daily_nee", "daily_gpp"))
-    r <- r * 1000
-  
-  # apply the annual sum
-  if(annualSum) r <- r * 365
-  
-  return(r)
-}
-
-OutputTrendPlot <- function(sim, outputVar, annualSum = FALSE, ylab){
-  # get the variables of interest and the dominant species
-  dt <- merge.data.table(sim$annualAverages[, .SD, .SDcols = c("pixelGroup", "year", outputVar)],
-                         sim$pixelGroupParameters[, .(pixelGroup, dominantSpecies, climatePolygon)])
-  
-  # expand the data table by converting pixelGroup to pixels
-  forestedPixelGroups <- data.table(
-    pixelGroup = values(sim$pixelGroupMap, na.rm=TRUE, mat = FALSE)
-  )
-  forestedPixelGroups[, pixId := .I]
-  
-  dt <- merge.data.table(forestedPixelGroups, dt, allow.cartesian = TRUE)
-  
-  # apply the annual sum
-  if(annualSum) dt[, (outputVar) := get(outputVar) * 365 ]
-  
-  # if primary productivity transform units to gC/m2/yr
-  if (outputVar %in% c("daily_npp", "daily_nep", "daily_nee", "daily_gpp"))
-    dt[, (outputVar) := get(outputVar) * 1000 ]
-  
-  # calculate the across-pixel annual mean with 95% interval
-  dt <- dt[ ,.(annMean = mean(get(outputVar)), annLower95perc = quantile(get(outputVar), 0), annUpper95perc = quantile(get(outputVar), 1)), by = .(year, dominantSpecies, climatePolygon)]
-  
-  # make the plot
-  p <- ggplot(dt) +
-    geom_ribbon(aes( x = year, ymin = annLower95perc, ymax = annUpper95perc, fill = dominantSpecies ), alpha = 0.5) +
-    geom_line(aes(x = year, y = annMean, color = dominantSpecies)) +
-    labs(x = "Year", y = ylab, color = "Dominant species", fill = "Dominant species") +
-    theme_bw() +
-    facet_wrap(~climatePolygon, labeller = as_labeller(function(labels) {paste0("Climate polygon: ", labels)}))
-  
-  return(p)
 }
 
 ### template initialization
@@ -308,7 +217,6 @@ Init <- function(sim) {
     sim$annualAverages$pixelGroup <- as.numeric(names(sim$bbgc.ini))[sim$annualAverages$pixelGroup]
     
   } else {
-    
     # Run the spinup
     res <- lapply(spinupIniPaths, function(iniPath) {
       message("Running the spinup for pixelGroup ", which(iniPath == spinupIniPaths), " of ", length(spinupIniPaths))
@@ -344,6 +252,15 @@ Init <- function(sim) {
     sim$annualAverages$pixelGroup <- as.numeric(names(sim$bbgc.ini))[sim$annualAverages$pixelGroup]
     
   }
+  
+  # Get the annual outputs
+  # Read the summary
+  # sim$monthlyAverages <- lapply(res, readMonthlyAverages) |> rbindlist(idcol = "pixelGroup")
+  # sim$monthlyAverages$pixelGroup <- as.numeric(names(sim$bbgc.ini))[sim$monthlyAverages$pixelGroup]
+  # sim$annualSummary <- lapply(sim$bbgc.ini, readAnnualSummary, path = bbgcPath) |> rbindlist(idcol = "pixelGroup")
+  # # Compute the annual average
+  # outputCols <- setdiff(colnames(sim$monthlyAverages), c("pixelGroup", "year", "month"))
+  # sim$annualAverages <- sim$dailyOutput[, lapply(.SD, mean), by = c("pixelGroup", "year"), .SDcols = outputCols]
   
   # remove the inputs/outputs folder of the temporary Biome-BGC folder
   # because it can fill up disk space.
@@ -487,8 +404,7 @@ readAnnualAverages <- function(res){
   return(annAvg)
 }
 
-# Not used. The annual summary is only produced when argv includes -a, which is 
-# unstable...
+
 readAnnualSummary <- function(ini, path){
   
   # Get column names
