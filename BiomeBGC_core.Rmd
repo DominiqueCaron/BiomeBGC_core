@@ -1,107 +1,65 @@
 ---
-title: "BiomeBGC_core Manual"
-subtitle: "v.`r SpaDES.core::moduleMetadata(module = 'BiomeBGC_core', path = '..')$version`"
-date: "Last updated: `r Sys.Date()`"
+title: "BiomeBGC_core"
+author: 
+  - Dominique Caron
+  - Céline Boisvenue
+date: "February 2026"
 output:
-  bookdown::html_document2:
-    toc: true
-    toc_float: true
-    theme: sandstone
-    number_sections: false
-    df_print: paged
+  html_document:
     keep_md: yes
 editor_options:
   chunk_output_type: console
-link-citations: true
-always_allow_html: true
 ---
 
-# BiomeBGC_core Module
-
-<!-- the following are text references used in captions for LaTeX compatibility -->
-(ref:BiomeBGC-core) *BiomeBGC_core*
-
-```{r setup-BiomeBGC-core, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, eval = FALSE, results = "hold") ## change to eval = TRUE if all chunks are to be evaluated
-
-dir.create("figures", showWarnings = FALSE)
-
-download.file(url = "https://img.shields.io/badge/Made%20with-Markdown-1f425f.png",
-              destfile = "figures/markdownBadge.png",
-              mode = "wb")
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE, results = "hold", message = FALSE)
 ```
 
-[![made-with-Markdown](figures/markdownBadge.png)](https://commonmark.org)
+# Overview
 
-<!-- if knitting to pdf remember to add the pandoc_args: ["--extract-media", "."] option to yml in order to get the badge images -->
+Runs Biome-BGC version 4.2 through the R package `PredictiveEcology/BiomeBGCR`.
 
-#### Authors:
+# Parameters
 
-`r paste(as.character(SpaDES.core::moduleMetadata(module = "BiomeBGC_core", path = '..')$authors), sep = ', ')`
-<!-- ideally separate authors with new lines, '\n' not working -->
+Provide a summary of user-visible parameters.
 
-## Module Overview
-
-### Module summary
-
-Provide a brief summary of what the module does / how to use the module.
-
-Module documentation should be written so that others can use your module.
-This is a template for module documentation, and should be changed to reflect your module.
-
-### Module inputs and parameters
-
-Describe input data required by the module and how to obtain it (e.g., directly from online sources or supplied by other modules)
-If `sourceURL` is specified, `downloadData("BiomeBGC_core", "C:/Users/docaron/Documents/repos")` may be sufficient.
-
-Table \@ref(tab:moduleInputs-BiomeBGC-core) shows the full list of module inputs.
-
-```{r moduleInputs-BiomeBGC-core, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
-df_inputs <- SpaDES.core::moduleInputs("BiomeBGC_core", "C:/Users/docaron/Documents/repos")
-knitr::kable(df_inputs,
-             caption = "List of (ref:BiomeBGC-core) input objects and their description.") |>
-  kableExtra::kable_styling(latex_options = "scale_down", full_width = TRUE)
+```{r moduleParams, echo = FALSE, eval = TRUE}
+df_params <- SpaDES.core::moduleParams("BiomeBGC_core", "..")
+knitr::kable(df_params)
 ```
 
-Summary of user-visible parameters (Table \@ref(tab:moduleParams-BiomeBGC-core))
-
-
-```{r moduleParams-BiomeBGC-core, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
-df_params <- SpaDES.core::moduleParams("BiomeBGC_core", "C:/Users/docaron/Documents/repos")
-knitr::kable(df_params, caption = "List of (ref:BiomeBGC-core) parameters and their description.") |>
-  kableExtra::kable_styling(latex_options = "scale_down", full_width = TRUE)
-```
-
-### Events
+# Events
 
 Describe what happens for each event type.
 
-### Plotting
+## Plotting
 
 Write what is plotted.
 
-### Saving
+## Saving
 
 Write what is saved.
 
-### Module outputs
+# Data dependencies
 
-Description of the module outputs (Table \@ref(tab:moduleOutputs-BiomeBGC-core)).
+## Input data
 
-```{r moduleOutputs-BiomeBGC-core, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
-df_outputs <- SpaDES.core::moduleOutputs("BiomeBGC_core", "C:/Users/docaron/Documents/repos")
-knitr::kable(df_outputs, caption = "List of (ref:BiomeBGC-core) outputs and their description.") |>
-  kableExtra::kable_styling(latex_options = "scale_down", full_width = TRUE)
+Input data are Biome-BGC's ini inputs for the spinup and simulation. These can be prepared by another module (e.g., `BiomeBGC_dataPrep`) or read in with the function `BiomeBGCR::iniRead()`. If reading in ini files, make sure the other input files (e.g., ecophysiological constants, meteorological data, etc.) are in the project folder.
+
+```{r moduleInputs, echo = FALSE, eval = TRUE}
+df_inputs <- SpaDES.core::moduleInputs("BiomeBGC_core", "..")
+knitr::kable(df_inputs)
 ```
 
-### Links to other modules
+## Output data
 
-Describe any anticipated linkages to other modules, such as modules that supply input data or do post-hoc analysis.
+Description of the module outputs.
 
-### Getting help
+```{r moduleOutputs, echo = FALSE, eval = TRUE}
+df_outputs <- SpaDES.core::moduleOutputs("BiomeBGC_core", "..")
+knitr::kable(df_outputs)
+```
 
--   provide a way for people to obtain help (e.g., module repository issues page)
+# Links to other modules
 
-## References
-
-<!-- autogenerated from bibligraphy -->
+Inputs can be prepared by `BiomeBGC_dataPrep`, and outputs can be validated with `BiomeBGC_validationFluxTower`.

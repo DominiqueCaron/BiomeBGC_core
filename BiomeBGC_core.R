@@ -10,7 +10,6 @@ defineModule(sim, list(
   keywords = "",
   authors = c(
     person("Dominique", "Caron", email = "dominique.caron@nrcan-rncan.gc.ca", role = c("aut", "cre")),
-    person(c("Alex", "M."), "Chubaty", email = "achubaty@for-cast.ca", role = "aut"),
     person("Céline", "Boisvenue", email = "celine.boisvenue@nrcan-rncan.gc.ca", role = "ctb")
   ),
   childModules = character(0),
